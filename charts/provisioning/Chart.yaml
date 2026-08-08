@@ -1,0 +1,10 @@
+apiVersion: v2
+name: provisioning
+description: Reconciles the resources a release declares the platform should contain.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/agynio/provisioning
+sources:
+  - https://github.com/agynio/provisioning
+kubeVersion: ">=1.26.0-0"

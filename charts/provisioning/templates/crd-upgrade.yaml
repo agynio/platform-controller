@@ -1,0 +1,126 @@
+{{- if .Values.crds.upgradeJob.enabled }}
+{{- $name := printf "%s-crd-upgrade" (include "provisioning.fullname" .) -}}
+{{- /*
+  Definitions must upgrade in place with the release, and must never be deleted
+  and recreated: a definition owns every object of its kind, so removing one
+  destroys the declarations it describes.
+
+  Helm cannot do this on its own. Files in crds/ are applied before anything
+  declared against them on a first install, but Helm never updates them again.
+  A definition carried as an ordinary template fails the first install instead,
+  because Helm resolves the whole manifest before any hook runs and the kind
+  does not exist yet. A definition carried as a hook cannot update one that
+  exists, and the delete policy that would let it is the destructive case above.
+
+  So: crds/ establishes the kinds, and this applies the same files server-side
+  on every upgrade, before the declarations in this release are applied. That
+  ordering is the point -- a declaration applied against a schema that does not
+  yet describe its new fields has them silently pruned rather than rejected.
+*/ -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}
+  labels:
+{{ include "provisioning.labels" . | indent 4 }}
+  annotations:
+    helm.sh/hook: pre-upgrade
+    helm.sh/hook-weight: "-110"
+    helm.sh/hook-delete-policy: before-hook-creation
+data:
+{{- range $path, $_ := .Files.Glob "crds/*.yaml" }}
+  {{ base $path }}: |
+{{ $.Files.Get $path | indent 4 }}
+{{- end }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  labels:
+{{ include "provisioning.labels" . | indent 4 }}
+  annotations:
+    helm.sh/hook: pre-upgrade
+    helm.sh/hook-weight: "-110"
+    helm.sh/hook-delete-policy: before-hook-creation
+---
+# Cluster-scoped because definitions are. Deliberately no delete verb: nothing
+# in this release may remove a definition.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $name }}
+  labels:
+{{ include "provisioning.labels" . | indent 4 }}
+  annotations:
+    helm.sh/hook: pre-upgrade
+    helm.sh/hook-weight: "-110"
+    helm.sh/hook-delete-policy: before-hook-creation
+rules:
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["get", "list", "create", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $name }}
+  labels:
+{{ include "provisioning.labels" . | indent 4 }}
+  annotations:
+    helm.sh/hook: pre-upgrade
+    helm.sh/hook-weight: "-110"
+    helm.sh/hook-delete-policy: before-hook-creation
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $name }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $name }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ $name }}
+  labels:
+{{ include "provisioning.labels" . | indent 4 }}
+  annotations:
+    helm.sh/hook: pre-upgrade
+    helm.sh/hook-weight: "-100"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: {{ .Values.crds.upgradeJob.backoffLimit }}
+  template:
+    metadata:
+      labels:
+{{ include "provisioning.selectorLabels" . | indent 8 }}
+        app.kubernetes.io/component: crd-upgrade
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ $name }}
+      containers:
+        - name: apply
+          image: {{ .Values.crds.upgradeJob.image | quote }}
+          # Server-side apply: updates a definition in place and never replaces
+          # it. --force-conflicts takes ownership back from a previous
+          # client-side apply without touching the objects of that kind.
+          command:
+            - kubectl
+            - apply
+            - --server-side
+            - --force-conflicts
+            - -f
+            - /schemas
+          volumeMounts:
+            - name: schemas
+              mountPath: /schemas
+              readOnly: true
+          resources:
+{{ toYaml .Values.crds.upgradeJob.resources | indent 12 }}
+      volumes:
+        - name: schemas
+          configMap:
+            name: {{ $name }}
+{{- end }}

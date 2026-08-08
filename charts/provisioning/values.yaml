@@ -1,0 +1,76 @@
+image:
+  repository: ghcr.io/agynio/provisioning
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: provisioning
+
+# The ordinary API. There is no internal provisioning surface, so this is the
+# only way in, and the controller is subject to the same authentication and
+# authorization as any other caller.
+gateway:
+  url: http://gateway:8080
+
+# The platform admin identity's credential, mounted from the Secret the umbrella
+# generates. Never a literal: a token in a values file is rendered into the
+# workload spec, which is what having a Secret is for.
+bootstrapToken:
+  secretName: gateway-bootstrap-token
+  key: token
+
+zitiManagement:
+  target: http://ziti-management:50051
+
+# Custom resource definitions are cluster-scoped and may be governed separately
+# from the workloads that use them, so installing them is a choice like any
+# other bundled dependency. An operator managing them out of band turns this off
+# and supplies them.
+#
+# The definitions themselves ship in crds/, which Helm applies before anything
+# declared against them on a first install but never updates afterwards. This
+# hook is what makes them upgrade in place with the release: it applies the same
+# files server-side before the declarations, and never deletes a definition —
+# deleting one destroys every declaration of its kind.
+crds:
+  upgradeJob:
+    enabled: true
+    image: alpine/k8s:1.33.1
+    backoffLimit: 6
+    resources:
+      requests:
+        cpu: 10m
+        memory: 32Mi
+      limits:
+        cpu: 500m
+        memory: 256Mi
+
+replicaCount: 1
+
+resources:
+  requests:
+    cpu: 20m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podAnnotations: {}

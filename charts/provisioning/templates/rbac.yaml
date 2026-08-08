@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "provisioning.fullname" . }}
+  labels:
+{{ include "provisioning.labels" . | indent 4 }}
+---
+# Declarations and the Secrets they produce live alongside the release, so this
+# is namespaced: the controller needs no cluster-wide read of anything.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "provisioning.fullname" . }}
+  labels:
+{{ include "provisioning.labels" . | indent 4 }}
+rules:
+  - apiGroups: ["platform.agyn.io"]
+    resources: ["organizations", "images", "runners", "apps", "overlaypolicies"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["platform.agyn.io"]
+    resources: ["clusteradmins"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  - apiGroups: ["platform.agyn.io"]
+    resources:
+      - organizations/status
+      - images/status
+      - runners/status
+      - apps/status
+      - clusteradmins/status
+      - overlaypolicies/status
+    verbs: ["get", "update", "patch"]
+  - apiGroups: ["platform.agyn.io"]
+    resources: ["clusteradmins/finalizers"]
+    verbs: ["update"]
+  # Create only. A service token is returned once, so the controller writes the
+  # Secret that holds it and never rewrites one.
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch", "create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "provisioning.fullname" . }}
+  labels:
+{{ include "provisioning.labels" . | indent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "provisioning.fullname" . }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "provisioning.fullname" . }}
+    namespace: {{ .Release.Namespace }}
