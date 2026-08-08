@@ -1,5 +1,5 @@
 {{- if .Values.crds.upgradeJob.enabled }}
-{{- $name := printf "%s-crd-upgrade" (include "provisioning.fullname" .) -}}
+{{- $name := printf "%s-crd-upgrade" (include "platform-controller.fullname" .) -}}
 {{- /*
   Definitions must upgrade in place with the release, and must never be deleted
   and recreated: a definition owns every object of its kind, so removing one
@@ -22,7 +22,7 @@ kind: ConfigMap
 metadata:
   name: {{ $name }}
   labels:
-{{ include "provisioning.labels" . | indent 4 }}
+{{ include "platform-controller.labels" . | indent 4 }}
   annotations:
     helm.sh/hook: pre-upgrade
     helm.sh/hook-weight: "-110"
@@ -38,7 +38,7 @@ kind: ServiceAccount
 metadata:
   name: {{ $name }}
   labels:
-{{ include "provisioning.labels" . | indent 4 }}
+{{ include "platform-controller.labels" . | indent 4 }}
   annotations:
     helm.sh/hook: pre-upgrade
     helm.sh/hook-weight: "-110"
@@ -51,7 +51,7 @@ kind: ClusterRole
 metadata:
   name: {{ $name }}
   labels:
-{{ include "provisioning.labels" . | indent 4 }}
+{{ include "platform-controller.labels" . | indent 4 }}
   annotations:
     helm.sh/hook: pre-upgrade
     helm.sh/hook-weight: "-110"
@@ -66,7 +66,7 @@ kind: ClusterRoleBinding
 metadata:
   name: {{ $name }}
   labels:
-{{ include "provisioning.labels" . | indent 4 }}
+{{ include "platform-controller.labels" . | indent 4 }}
   annotations:
     helm.sh/hook: pre-upgrade
     helm.sh/hook-weight: "-110"
@@ -85,7 +85,7 @@ kind: Job
 metadata:
   name: {{ $name }}
   labels:
-{{ include "provisioning.labels" . | indent 4 }}
+{{ include "platform-controller.labels" . | indent 4 }}
   annotations:
     helm.sh/hook: pre-upgrade
     helm.sh/hook-weight: "-100"
@@ -95,7 +95,7 @@ spec:
   template:
     metadata:
       labels:
-{{ include "provisioning.selectorLabels" . | indent 8 }}
+{{ include "platform-controller.selectorLabels" . | indent 8 }}
         app.kubernetes.io/component: crd-upgrade
     spec:
       restartPolicy: Never

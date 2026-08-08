@@ -1,10 +1,10 @@
 apiVersion: v2
-name: provisioning
+name: platform-controller
 description: Reconciles the resources a release declares the platform should contain.
 type: application
 version: 0.1.0
 appVersion: "0.1.0"
-home: https://github.com/agynio/provisioning
+home: https://github.com/agynio/platform-controller
 sources:
-  - https://github.com/agynio/provisioning
+  - https://github.com/agynio/platform-controller
 kubeVersion: ">=1.26.0-0"

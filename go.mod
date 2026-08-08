@@ -1,4 +1,4 @@
-module github.com/agynio/provisioning
+module github.com/agynio/platform-controller
 
 go 1.26.3
 

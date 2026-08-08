@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	"github.com/agynio/provisioning/.gen/go/agynio/api/ziti_management/v1/ziti_managementv1connect"
+	"github.com/agynio/platform-controller/.gen/go/agynio/api/ziti_management/v1/ziti_managementv1connect"
 	"golang.org/x/net/http2"
 )
 

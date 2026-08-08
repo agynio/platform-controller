@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	provisioningv1alpha1 "github.com/agynio/provisioning/api/v1alpha1"
+	provisioningv1alpha1 "github.com/agynio/platform-controller/api/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )

@@ -6,7 +6,7 @@ managed:
       module: buf.build/opentelemetry/opentelemetry
   override:
     - file_option: go_package_prefix
-      value: github.com/agynio/provisioning/.gen/go
+      value: github.com/agynio/platform-controller/.gen/go
 plugins:
   - remote: buf.build/protocolbuffers/go
     out: .gen/go

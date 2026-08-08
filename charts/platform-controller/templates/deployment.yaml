@@ -1,24 +1,24 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "provisioning.fullname" . }}
+  name: {{ include "platform-controller.fullname" . }}
   labels:
-{{ include "provisioning.labels" . | indent 4 }}
+{{ include "platform-controller.labels" . | indent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-{{ include "provisioning.selectorLabels" . | indent 6 }}
+{{ include "platform-controller.selectorLabels" . | indent 6 }}
   template:
     metadata:
       labels:
-{{ include "provisioning.selectorLabels" . | indent 8 }}
+{{ include "platform-controller.selectorLabels" . | indent 8 }}
       {{- with .Values.podAnnotations }}
       annotations:
 {{ toYaml . | indent 8 }}
       {{- end }}
     spec:
-      serviceAccountName: {{ include "provisioning.fullname" . }}
+      serviceAccountName: {{ include "platform-controller.fullname" . }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
 {{ toYaml . | indent 8 }}
@@ -26,7 +26,7 @@ spec:
       securityContext:
 {{ toYaml .Values.podSecurityContext | indent 8 }}
       containers:
-        - name: provisioning
+        - name: platform-controller
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:

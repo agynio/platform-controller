@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	"connectrpc.com/connect"
-	imagesv1 "github.com/agynio/provisioning/.gen/go/agynio/api/images/v1"
-	provisioningv1alpha1 "github.com/agynio/provisioning/api/v1alpha1"
-	"github.com/agynio/provisioning/internal/platform"
+	imagesv1 "github.com/agynio/platform-controller/.gen/go/agynio/api/images/v1"
+	provisioningv1alpha1 "github.com/agynio/platform-controller/api/v1alpha1"
+	"github.com/agynio/platform-controller/internal/platform"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"

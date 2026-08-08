@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	"connectrpc.com/connect"
-	usersv1 "github.com/agynio/provisioning/.gen/go/agynio/api/users/v1"
-	provisioningv1alpha1 "github.com/agynio/provisioning/api/v1alpha1"
-	"github.com/agynio/provisioning/internal/platform"
+	usersv1 "github.com/agynio/platform-controller/.gen/go/agynio/api/users/v1"
+	provisioningv1alpha1 "github.com/agynio/platform-controller/api/v1alpha1"
+	"github.com/agynio/platform-controller/internal/platform"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"

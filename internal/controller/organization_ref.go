@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	provisioningv1alpha1 "github.com/agynio/provisioning/api/v1alpha1"
+	provisioningv1alpha1 "github.com/agynio/platform-controller/api/v1alpha1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"

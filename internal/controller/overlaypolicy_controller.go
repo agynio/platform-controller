@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	"connectrpc.com/connect"
-	zitiv1 "github.com/agynio/provisioning/.gen/go/agynio/api/ziti_management/v1"
-	"github.com/agynio/provisioning/.gen/go/agynio/api/ziti_management/v1/ziti_managementv1connect"
-	provisioningv1alpha1 "github.com/agynio/provisioning/api/v1alpha1"
+	zitiv1 "github.com/agynio/platform-controller/.gen/go/agynio/api/ziti_management/v1"
+	"github.com/agynio/platform-controller/.gen/go/agynio/api/ziti_management/v1/ziti_managementv1connect"
+	provisioningv1alpha1 "github.com/agynio/platform-controller/api/v1alpha1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"

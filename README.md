@@ -1,4 +1,4 @@
-# Provisioning
+# Platform Controller
 
 Reconciles what a release declares the platform should contain against the
 platform's own API.
@@ -73,10 +73,10 @@ Regenerate the CRDs and deepcopy after changing a type:
 
 ```bash
 go run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.16.5 object paths=./api/...
-go run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.16.5 crd paths=./api/... output:crd:artifacts:config=charts/provisioning/crds
+go run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.16.5 crd paths=./api/... output:crd:artifacts:config=charts/platform-controller/crds
 ```
 
-The generated definitions are committed: they ship in `charts/provisioning/crds`
+The generated definitions are committed: they ship in `charts/platform-controller/crds`
 for a first install, and the chart's `pre-upgrade` hook applies the same files
 server-side so they upgrade in place with the release. A definition is never
 deleted in order to be replaced — it owns every object of its kind.

@@ -1,11 +1,11 @@
 image:
-  repository: ghcr.io/agynio/provisioning
+  repository: ghcr.io/agynio/platform-controller
   tag: ""
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []
 nameOverride: ""
-fullnameOverride: provisioning
+fullnameOverride: platform-controller
 
 # The ordinary API. There is no internal provisioning surface, so this is the
 # only way in, and the controller is subject to the same authentication and

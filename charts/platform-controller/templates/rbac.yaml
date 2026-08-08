@@ -1,18 +1,18 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: {{ include "provisioning.fullname" . }}
+  name: {{ include "platform-controller.fullname" . }}
   labels:
-{{ include "provisioning.labels" . | indent 4 }}
+{{ include "platform-controller.labels" . | indent 4 }}
 ---
 # Declarations and the Secrets they produce live alongside the release, so this
 # is namespaced: the controller needs no cluster-wide read of anything.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: {{ include "provisioning.fullname" . }}
+  name: {{ include "platform-controller.fullname" . }}
   labels:
-{{ include "provisioning.labels" . | indent 4 }}
+{{ include "platform-controller.labels" . | indent 4 }}
 rules:
   - apiGroups: ["platform.agyn.io"]
     resources: ["organizations", "images", "runners", "apps", "overlaypolicies"]
@@ -41,14 +41,14 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: {{ include "provisioning.fullname" . }}
+  name: {{ include "platform-controller.fullname" . }}
   labels:
-{{ include "provisioning.labels" . | indent 4 }}
+{{ include "platform-controller.labels" . | indent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: {{ include "provisioning.fullname" . }}
+  name: {{ include "platform-controller.fullname" . }}
 subjects:
   - kind: ServiceAccount
-    name: {{ include "provisioning.fullname" . }}
+    name: {{ include "platform-controller.fullname" . }}
     namespace: {{ .Release.Namespace }}

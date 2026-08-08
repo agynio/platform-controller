@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	"github.com/agynio/provisioning/.gen/go/agynio/api/gateway/v1/gatewayv1connect"
+	"github.com/agynio/platform-controller/.gen/go/agynio/api/gateway/v1/gatewayv1connect"
 )
 
 // Client holds one Connect client per Gateway surface the controller declares
