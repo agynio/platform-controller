@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      GOTOOLCHAIN: local
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+
+      - name: Install buf
+        uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          version: 1.66.0
+
+      - name: Generate protobuf bindings
+        run: buf generate buf.build/agynio/api
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Run vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build ./...
+
+      # The definitions are committed because they ship in charts/, and the
+      # chart's pre-upgrade hook applies exactly what is committed. A schema
+      # that has drifted from the Go types does not fail the release -- it
+      # prunes the fields it does not know about out of every declaration,
+      # silently. So the check is that regenerating changes nothing.
+      - name: Check generated CRDs and deepcopy are current
+        run: |
+          go run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.16.5 \
+            object paths=./api/...
+          go run sigs.k8s.io/controller-tools/cmd/controller-gen@v0.16.5 \
+            crd paths=./api/... output:crd:artifacts:config=charts/platform-controller/crds
+          if ! git diff --exit-code -- api charts/platform-controller/crds; then
+            echo "::error::Generated files are stale. Re-run controller-gen and commit the result."
+            exit 1
+          fi
+
+      - name: Lint chart
+        run: helm lint charts/platform-controller
