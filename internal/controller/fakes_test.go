@@ -120,12 +120,15 @@ type fakeUsers struct {
 	updates   []*usersv1.UpdateUserRequest
 }
 
-func (f *fakeUsers) SearchUsers(context.Context, *connect.Request[usersv1.SearchUsersRequest]) (*connect.Response[usersv1.SearchUsersResponse], error) {
-	entries := make([]*usersv1.UserDirectoryEntry, 0, len(f.directory))
-	for identityID := range f.directory {
-		entries = append(entries, &usersv1.UserDirectoryEntry{IdentityId: identityID})
+func (f *fakeUsers) ListUsers(_ context.Context, _ *connect.Request[usersv1.ListUsersRequest]) (*connect.Response[usersv1.ListUsersResponse], error) {
+	users := make([]*usersv1.User, 0, len(f.directory))
+	for identityID, email := range f.directory {
+		users = append(users, &usersv1.User{
+			Meta:  &usersv1.EntityMeta{Id: identityID},
+			Email: email,
+		})
 	}
-	return connect.NewResponse(&usersv1.SearchUsersResponse{Users: entries}), nil
+	return connect.NewResponse(&usersv1.ListUsersResponse{Users: users}), nil
 }
 
 func (f *fakeUsers) GetUser(_ context.Context, req *connect.Request[usersv1.GetUserRequest]) (*connect.Response[usersv1.GetUserResponse], error) {
