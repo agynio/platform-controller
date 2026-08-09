@@ -72,9 +72,14 @@ func setCondition(status *provisioningv1alpha1.ObjectStatus, generation int64, v
 // permanent reports whether the platform refused the declaration itself, rather
 // than being unable to answer yet. Retrying an invalid slug forever would hide
 // it behind a Pending that never resolves.
+//
+// PermissionDenied is deliberately absent: this controller's own cluster admin
+// grant converges asynchronously at Identity's startup, so a denial in the first
+// seconds means "not yet", not "never". Treating it as permanent stranded every
+// declaration reconciled before that grant landed.
 func permanent(err error) bool {
 	switch connect.CodeOf(err) {
-	case connect.CodeInvalidArgument, connect.CodeAlreadyExists, connect.CodePermissionDenied:
+	case connect.CodeInvalidArgument, connect.CodeAlreadyExists:
 		return true
 	default:
 		return false
