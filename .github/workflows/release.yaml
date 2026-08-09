@@ -39,6 +39,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # .gen is not committed, so the build context has no bindings until they
+      # are generated here. The Dockerfile deliberately does not generate them:
+      # that would put a network dependency inside the image build.
+      - name: Set up Buf
+        uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          version: 1.66.0
+
+      - name: Generate protobuf bindings
+        run: buf generate buf.build/agynio/api
+
       - name: Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
