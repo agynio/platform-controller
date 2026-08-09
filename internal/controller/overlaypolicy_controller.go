@@ -46,8 +46,14 @@ func (r *OverlayPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, nil
 	}
 
+	// Services first: a policy naming one is refused until it exists, so
+	// creating them in the same pass is what lets a fresh overlay converge
+	// without a second round.
+	appliedServices, servicesPending := r.ensureServices(ctx, declaration.Spec.Services)
+	declaration.Status.AppliedServices = appliedServices
+
 	applied := make([]string, 0, len(declaration.Spec.Policies))
-	var pending []string
+	pending := servicesPending
 
 	// A service role naming one service is written "@name", but the overlay
 	// stores policies against ids and rejects a name it is handed as one. The
@@ -92,11 +98,12 @@ func (r *OverlayPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
 	if len(pending) > 0 {
 		setPending(&declaration.Status.ObjectStatus, declaration.Generation,
-			fmt.Sprintf("%d of %d policies applied; waiting on: %v", len(applied), len(declaration.Spec.Policies), pending))
+			fmt.Sprintf("%d of %d services and %d of %d policies applied; waiting on: %v",
+				len(appliedServices), len(declaration.Spec.Services), len(applied), len(declaration.Spec.Policies), pending))
 		return r.save(ctx, &declaration, requeue)
 	}
 
-	logger.Info("overlay policies applied", "count", len(applied))
+	logger.Info("overlay configuration applied", "services", len(appliedServices), "policies", len(applied))
 	setReady(&declaration.Status.ObjectStatus, declaration.Generation)
 	return r.save(ctx, &declaration, done)
 }
@@ -170,4 +177,45 @@ func (r *OverlayPolicyReconciler) serviceNameResolver(ctx context.Context) func(
 		}
 		return resolved, nil
 	}
+}
+
+// ensureServices creates the services the platform hosts on the overlay.
+//
+// Create-if-absent through return_existing rather than compared and corrected:
+// a service carries live terminators from whatever is bound to it, and
+// recreating one to change a role attribute would cut every connection through
+// it. A service that needs different configuration is a different service.
+func (r *OverlayPolicyReconciler) ensureServices(ctx context.Context, services []provisioningv1alpha1.OverlayService) ([]string, []string) {
+	applied := make([]string, 0, len(services))
+	var pending []string
+
+	for _, service := range services {
+		request := &zitiv1.CreateServiceRequest{
+			Name:           service.Name,
+			RoleAttributes: service.RoleAttributes,
+			Tags:           managedByProvisioning,
+			ReturnExisting: true,
+		}
+		if service.Intercept != nil {
+			request.InterceptV1Config = &zitiv1.InterceptV1Config{
+				Protocols:  service.Intercept.Protocols,
+				Addresses:  service.Intercept.Addresses,
+				PortRanges: portRanges(service.Intercept.PortRanges),
+			}
+		}
+		if _, err := r.Ziti.CreateService(ctx, connect.NewRequest(request)); err != nil {
+			pending = append(pending, fmt.Sprintf("service %s (%v)", service.Name, err))
+			continue
+		}
+		applied = append(applied, service.Name)
+	}
+	return applied, pending
+}
+
+func portRanges(ranges []provisioningv1alpha1.PortRange) []*zitiv1.PortRange {
+	converted := make([]*zitiv1.PortRange, 0, len(ranges))
+	for _, portRange := range ranges {
+		converted = append(converted, &zitiv1.PortRange{Low: portRange.Low, High: portRange.High})
+	}
+	return converted
 }
