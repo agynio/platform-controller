@@ -148,7 +148,7 @@ func TestServicesAreCreatedBeforeThePoliciesThatNameThem(t *testing.T) {
 		Name:           "gateway",
 		RoleAttributes: []string{"gateway"},
 		Intercept: &provisioningv1alpha1.InterceptConfig{
-			Addresses:  []string{"gateway.ziti"},
+			Addresses:  []string{"gateway.agyn"},
 			Protocols:  []string{"tcp"},
 			PortRanges: []provisioningv1alpha1.PortRange{{Low: 443, High: 443}},
 		},
@@ -167,7 +167,7 @@ func TestServicesAreCreatedBeforeThePoliciesThatNameThem(t *testing.T) {
 	if !ziti.createdServices[0].GetReturnExisting() {
 		t.Fatal("expected create-if-absent: recreating a service cuts its live terminators")
 	}
-	if got := ziti.createdServices[0].GetInterceptV1Config().GetAddresses(); len(got) != 1 || got[0] != "gateway.ziti" {
+	if got := ziti.createdServices[0].GetInterceptV1Config().GetAddresses(); len(got) != 1 || got[0] != "gateway.agyn" {
 		t.Fatalf("expected the intercept address carried, got %v", got)
 	}
 	// The policy resolved against the service this same pass created.
