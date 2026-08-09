@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"connectrpc.com/connect"
 	zitiv1 "github.com/agynio/platform-controller/.gen/go/agynio/api/ziti_management/v1"
@@ -48,6 +49,13 @@ func (r *OverlayPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	applied := make([]string, 0, len(declaration.Spec.Policies))
 	var pending []string
 
+	// A service role naming one service is written "@name", but the overlay
+	// stores policies against ids and rejects a name it is handed as one. The
+	// ziti CLI resolved this client-side; nothing does on this path, so the
+	// names are resolved here before the policy is created. Role attributes
+	// ("#attribute") are not names and pass through untouched.
+	resolve := r.serviceNameResolver(ctx)
+
 	for _, policy := range declaration.Spec.Policies {
 		policyType, err := servicePolicyType(policy.Type)
 		if err != nil {
@@ -59,11 +67,17 @@ func (r *OverlayPolicyReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		// A policy naming a service cannot be applied until that service
 		// exists, which is exactly the kind of "not yet" reconciliation
 		// absorbs: the rest of the set still converges.
+		resolvedRoles, err := resolve(policy.ServiceRoles)
+		if err != nil {
+			pending = append(pending, fmt.Sprintf("%s (%v)", policy.Name, err))
+			continue
+		}
+
 		_, err = r.Ziti.CreateServicePolicy(ctx, connect.NewRequest(&zitiv1.CreateServicePolicyRequest{
 			Name:           policy.Name,
 			Type:           policyType,
 			IdentityRoles:  policy.IdentityRoles,
-			ServiceRoles:   policy.ServiceRoles,
+			ServiceRoles:   resolvedRoles,
 			Tags:           managedByProvisioning,
 			ReturnExisting: true,
 		}))
@@ -112,4 +126,48 @@ func (r *OverlayPolicyReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&provisioningv1alpha1.OverlayPolicy{}).
 		Complete(r)
+}
+
+// serviceNameResolver turns "@name" service roles into "@id".
+//
+// OpenZiti stores a policy against service ids and rejects a name supplied as
+// one. The ziti CLI resolved names before calling the API; this path had
+// nothing doing that, so every policy naming a single service -- the Gateway,
+// the LLM Proxy, Tracing, the vendor intercepts -- was refused while the ones
+// written against role attributes went through.
+//
+// Lookups are cached for the pass: the same handful of services is named by
+// several policies, and a service that does not exist yet is a "not yet" for
+// every policy naming it.
+func (r *OverlayPolicyReconciler) serviceNameResolver(ctx context.Context) func([]string) ([]string, error) {
+	cache := map[string]string{}
+	return func(roles []string) ([]string, error) {
+		resolved := make([]string, 0, len(roles))
+		for _, role := range roles {
+			name, isServiceName := strings.CutPrefix(role, "@")
+			if !isServiceName {
+				// A role attribute matches by attribute, not identity.
+				resolved = append(resolved, role)
+				continue
+			}
+			id, ok := cache[name]
+			if !ok {
+				response, err := r.Ziti.ListServices(ctx, connect.NewRequest(&zitiv1.ListServicesRequest{
+					Name:     name,
+					PageSize: 2,
+				}))
+				if err != nil {
+					return nil, fmt.Errorf("resolve service %q: %w", name, err)
+				}
+				services := response.Msg.GetServices()
+				if len(services) == 0 {
+					return nil, fmt.Errorf("service %q does not exist yet", name)
+				}
+				id = services[0].GetZitiServiceId()
+				cache[name] = id
+			}
+			resolved = append(resolved, "@"+id)
+		}
+		return resolved, nil
+	}
 }
