@@ -247,8 +247,8 @@ func TestClusterAdminGrantsTheNamedAccountOnly(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "operator", Namespace: namespace},
 		Spec:       provisioningv1alpha1.ClusterAdminSpec{Address: "operator@example.com"},
 	}
-	// A prefix match is not a person: SearchUsers returns both, and only the
-	// exact address may be granted.
+	// A near miss is not a person: the roster holds both and only the exact
+	// address may be granted.
 	users := &fakeUsers{directory: map[string]string{
 		"identity-1": "operator@example.com",
 		"identity-2": "operator@example.com.attacker.test",

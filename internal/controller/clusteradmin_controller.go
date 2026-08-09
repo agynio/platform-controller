@@ -114,29 +114,31 @@ func (r *ClusterAdminReconciler) revoke(ctx context.Context, admin *provisioning
 }
 
 // findByAddress resolves the address the identity provider asserts to an
-// account. SearchUsers narrows by prefix but does not return an address, so
-// each candidate is read back and matched exactly — a prefix match is not a
-// person.
+// account. There is no lookup by address, and SearchUsers matches a username
+// prefix -- an address is not one, so it was rejected outright rather than
+// simply missing the account -- so this pages the roster and matches exactly.
 func (r *ClusterAdminReconciler) findByAddress(ctx context.Context, address string) (string, error) {
-	candidates, err := r.Platform.Users.SearchUsers(ctx, connect.NewRequest(&usersv1.SearchUsersRequest{
-		Prefix: address,
-		Limit:  20,
-	}))
-	if err != nil {
-		return "", err
-	}
-	for _, candidate := range candidates.Msg.GetUsers() {
-		user, err := r.Platform.Users.GetUser(ctx, connect.NewRequest(&usersv1.GetUserRequest{
-			IdentityId: candidate.GetIdentityId(),
+	const pageSize = 100
+	wanted := strings.ToLower(strings.TrimSpace(address))
+
+	for pageToken := ""; ; {
+		page, err := r.Platform.Users.ListUsers(ctx, connect.NewRequest(&usersv1.ListUsersRequest{
+			PageSize:  pageSize,
+			PageToken: pageToken,
 		}))
 		if err != nil {
 			return "", err
 		}
-		if strings.EqualFold(strings.TrimSpace(user.Msg.GetUser().GetEmail()), strings.TrimSpace(address)) {
-			return candidate.GetIdentityId(), nil
+		for _, user := range page.Msg.GetUsers() {
+			if strings.ToLower(strings.TrimSpace(user.GetEmail())) == wanted {
+				return user.GetMeta().GetId(), nil
+			}
+		}
+		pageToken = page.Msg.GetNextPageToken()
+		if pageToken == "" {
+			return "", nil
 		}
 	}
-	return "", nil
 }
 
 func (r *ClusterAdminReconciler) setClusterRole(ctx context.Context, identityID string, role usersv1.ClusterRole) error {
