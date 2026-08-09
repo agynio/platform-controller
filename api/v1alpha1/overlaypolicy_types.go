@@ -11,8 +11,49 @@ import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 // — and because a policy naming a service cannot be applied until that service
 // exists, which is exactly the kind of "not yet" reconciliation absorbs.
 type OverlayPolicySpec struct {
+	// Services the platform binds and dials over the overlay. Declared here
+	// with the policies because a policy naming one cannot be applied until it
+	// exists, and both are overlay configuration rather than platform
+	// resources.
+	// +optional
+	Services []OverlayService `json:"services,omitempty"`
+
 	// +kubebuilder:validation:MinItems=1
 	Policies []ServicePolicy `json:"policies"`
+}
+
+// OverlayService is a service the platform hosts on the overlay. Its intercept
+// config is what tells a dialing tunneler which address to capture.
+type OverlayService struct {
+	// +kubebuilder:validation:MinLength=1
+	Name string `json:"name"`
+
+	// +optional
+	RoleAttributes []string `json:"roleAttributes,omitempty"`
+
+	// +optional
+	Intercept *InterceptConfig `json:"intercept,omitempty"`
+}
+
+type InterceptConfig struct {
+	// +kubebuilder:validation:MinItems=1
+	Addresses []string `json:"addresses"`
+
+	// +kubebuilder:default={"tcp"}
+	// +optional
+	Protocols []string `json:"protocols,omitempty"`
+
+	// +kubebuilder:validation:MinItems=1
+	PortRanges []PortRange `json:"portRanges"`
+}
+
+type PortRange struct {
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
+	Low int32 `json:"low"`
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
+	High int32 `json:"high"`
 }
 
 // ServicePolicy is written against role attributes rather than named services,
@@ -34,6 +75,10 @@ type ServicePolicy struct {
 
 type OverlayPolicyStatus struct {
 	ObjectStatus `json:",inline"`
+
+	// AppliedServices names the services that exist on the overlay.
+	// +optional
+	AppliedServices []string `json:"appliedServices,omitempty"`
 
 	// AppliedPolicies names the policies that exist on the overlay, so a
 	// declaration blocked on one service still reports the rest as done.

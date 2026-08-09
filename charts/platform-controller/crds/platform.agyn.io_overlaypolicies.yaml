@@ -92,6 +92,64 @@ spec:
                   type: object
                 minItems: 1
                 type: array
+              services:
+                description: |-
+                  Services the platform binds and dials over the overlay. Declared here
+                  with the policies because a policy naming one cannot be applied until it
+                  exists, and both are overlay configuration rather than platform
+                  resources.
+                items:
+                  description: |-
+                    OverlayService is a service the platform hosts on the overlay. Its intercept
+                    config is what tells a dialing tunneler which address to capture.
+                  properties:
+                    intercept:
+                      properties:
+                        addresses:
+                          items:
+                            type: string
+                          minItems: 1
+                          type: array
+                        portRanges:
+                          items:
+                            properties:
+                              high:
+                                format: int32
+                                maximum: 65535
+                                minimum: 1
+                                type: integer
+                              low:
+                                format: int32
+                                maximum: 65535
+                                minimum: 1
+                                type: integer
+                            required:
+                            - high
+                            - low
+                            type: object
+                          minItems: 1
+                          type: array
+                        protocols:
+                          default:
+                          - tcp
+                          items:
+                            type: string
+                          type: array
+                      required:
+                      - addresses
+                      - portRanges
+                      type: object
+                    name:
+                      minLength: 1
+                      type: string
+                    roleAttributes:
+                      items:
+                        type: string
+                      type: array
+                  required:
+                  - name
+                  type: object
+                type: array
             required:
             - policies
             type: object
@@ -101,6 +159,12 @@ spec:
                 description: |-
                   AppliedPolicies names the policies that exist on the overlay, so a
                   declaration blocked on one service still reports the rest as done.
+                items:
+                  type: string
+                type: array
+              appliedServices:
+                description: AppliedServices names the services that exist on the
+                  overlay.
                 items:
                   type: string
                 type: array
