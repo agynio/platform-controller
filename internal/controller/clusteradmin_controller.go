@@ -3,6 +3,8 @@ package controller
 import (
 	"context"
 	"fmt"
+	"slices"
+	"sort"
 	"strings"
 
 	"connectrpc.com/connect"
@@ -59,30 +61,42 @@ func (r *ClusterAdminReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		}
 	}
 
-	identityID, err := r.findByAddress(ctx, admin.Spec.Address)
+	matches, err := r.findByAddress(ctx, admin.Spec.Address)
 	if err != nil {
 		setPending(&admin.Status.ObjectStatus, admin.Generation, fmt.Sprintf("searching for %q: %v", admin.Spec.Address, err))
 		return r.save(ctx, &admin, requeue)
 	}
-	if identityID == "" {
+	if len(matches) == 0 {
 		setPending(&admin.Status.ObjectStatus, admin.Generation,
 			fmt.Sprintf("no account for %q yet; the grant completes when they first sign in", admin.Spec.Address))
 		return r.save(ctx, &admin, requeue)
 	}
-
-	if err := r.setClusterRole(ctx, identityID, usersv1.ClusterRole_CLUSTER_ROLE_ADMIN); err != nil {
-		if permanent(err) {
-			setFailed(&admin.Status.ObjectStatus, admin.Generation, provisioningv1alpha1.ReasonFailed, fmt.Sprintf("granting cluster admin: %v", err))
-			return r.save(ctx, &admin, done)
+	// Every account, not one of them. The declaration names a person, and an
+	// account is keyed on the subject its issuer asserts -- so changing issuer
+	// leaves that person signing in as a new account with the old one still
+	// holding the address. Picking one grants the role to whichever half the
+	// roster happened to list first, which after a migration is the abandoned
+	// one nobody can sign into.
+	for _, identityID := range matches {
+		if err := r.setClusterRole(ctx, identityID, usersv1.ClusterRole_CLUSTER_ROLE_ADMIN); err != nil {
+			if permanent(err) {
+				setFailed(&admin.Status.ObjectStatus, admin.Generation, provisioningv1alpha1.ReasonFailed,
+					fmt.Sprintf("granting cluster admin to %s: %v", identityID, err))
+				return r.save(ctx, &admin, done)
+			}
+			setPending(&admin.Status.ObjectStatus, admin.Generation,
+				fmt.Sprintf("granting cluster admin to %s: %v", identityID, err))
+			return r.save(ctx, &admin, requeue)
 		}
-		setPending(&admin.Status.ObjectStatus, admin.Generation, fmt.Sprintf("granting cluster admin: %v", err))
-		return r.save(ctx, &admin, requeue)
 	}
 
-	if admin.Status.IdentityID != identityID {
-		logger.Info("granted cluster admin", "address", admin.Spec.Address, "identityId", identityID)
+	// Recorded before the grants are reported, so a revocation covers accounts
+	// granted on an earlier pass as well as the ones just granted.
+	granted := union(admin.Status.IdentityIDs, matches)
+	if !slices.Equal(admin.Status.IdentityIDs, granted) {
+		logger.Info("granted cluster admin", "address", admin.Spec.Address, "identityIds", matches)
 	}
-	admin.Status.IdentityID = identityID
+	admin.Status.IdentityIDs = granted
 	setReady(&admin.Status.ObjectStatus, admin.Generation)
 	return r.save(ctx, &admin, done)
 }
@@ -96,11 +110,11 @@ func (r *ClusterAdminReconciler) revoke(ctx context.Context, admin *provisioning
 	if !controllerutil.ContainsFinalizer(admin, revokeFinalizer) {
 		return ctrl.Result{}, nil
 	}
-	if admin.Status.IdentityID != "" {
-		if err := r.setClusterRole(ctx, admin.Status.IdentityID, usersv1.ClusterRole_CLUSTER_ROLE_UNSPECIFIED); err != nil && !permanent(err) {
+	for _, identityID := range admin.Status.IdentityIDs {
+		if err := r.setClusterRole(ctx, identityID, usersv1.ClusterRole_CLUSTER_ROLE_UNSPECIFIED); err != nil && !permanent(err) {
 			return requeue()
 		}
-		logger.Info("revoked cluster admin", "address", admin.Spec.Address, "identityId", admin.Status.IdentityID)
+		logger.Info("revoked cluster admin", "address", admin.Spec.Address, "identityId", identityID)
 	}
 
 	controllerutil.RemoveFinalizer(admin, revokeFinalizer)
@@ -113,13 +127,18 @@ func (r *ClusterAdminReconciler) revoke(ctx context.Context, admin *provisioning
 	return ctrl.Result{}, nil
 }
 
-// findByAddress resolves the address the identity provider asserts to an
-// account. There is no lookup by address, and SearchUsers matches a username
-// prefix -- an address is not one, so it was rejected outright rather than
-// simply missing the account -- so this pages the roster and matches exactly.
-func (r *ClusterAdminReconciler) findByAddress(ctx context.Context, address string) (string, error) {
+// findByAddress resolves the address the identity provider asserts to accounts.
+// There is no lookup by address, and SearchUsers matches a username prefix -- an
+// address is not one, so it was rejected outright rather than simply missing the
+// account -- so this pages the roster and matches exactly.
+//
+// Every match is returned, not the first: nothing stops two accounts asserting
+// one address, and the caller has to see that rather than be handed a guess.
+// Sorted so a status message does not churn with roster order.
+func (r *ClusterAdminReconciler) findByAddress(ctx context.Context, address string) ([]string, error) {
 	const pageSize = 100
 	wanted := strings.ToLower(strings.TrimSpace(address))
+	var found []string
 
 	for pageToken := ""; ; {
 		page, err := r.Platform.Users.ListUsers(ctx, connect.NewRequest(&usersv1.ListUsersRequest{
@@ -127,18 +146,37 @@ func (r *ClusterAdminReconciler) findByAddress(ctx context.Context, address stri
 			PageToken: pageToken,
 		}))
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 		for _, user := range page.Msg.GetUsers() {
 			if strings.ToLower(strings.TrimSpace(user.GetEmail())) == wanted {
-				return user.GetMeta().GetId(), nil
+				found = append(found, user.GetMeta().GetId())
 			}
 		}
 		pageToken = page.Msg.GetNextPageToken()
 		if pageToken == "" {
-			return "", nil
+			sort.Strings(found)
+			return found, nil
 		}
 	}
+}
+
+// union keeps every account this declaration has granted to, so one that drops
+// off the roster mid-life is still revoked when the declaration goes away.
+func union(existing, found []string) []string {
+	seen := make(map[string]struct{}, len(existing)+len(found))
+	var all []string
+	for _, group := range [][]string{existing, found} {
+		for _, identityID := range group {
+			if _, ok := seen[identityID]; ok {
+				continue
+			}
+			seen[identityID] = struct{}{}
+			all = append(all, identityID)
+		}
+	}
+	sort.Strings(all)
+	return all
 }
 
 func (r *ClusterAdminReconciler) setClusterRole(ctx context.Context, identityID string, role usersv1.ClusterRole) error {
