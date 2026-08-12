@@ -18,10 +18,16 @@ type ClusterAdminSpec struct {
 type ClusterAdminStatus struct {
 	ObjectStatus `json:",inline"`
 
-	// IdentityID is the account the grant was written against, recorded so the
-	// grant can be revoked after the address stops resolving to it.
+	// IdentityIDs are the accounts the grant was written against, recorded so
+	// every one of them can be revoked after the address stops resolving to it.
+	//
+	// Plural because one address can name several accounts: an account is keyed
+	// on the subject its issuer asserts, so changing issuer leaves the person
+	// holding a new account and the old one behind. The declaration names a
+	// person, not a row, so it grants to all of them rather than guessing which
+	// is current.
 	// +optional
-	IdentityID string `json:"identityId,omitempty"`
+	IdentityIDs []string `json:"identityIds,omitempty"`
 }
 
 // +kubebuilder:object:root=true
@@ -29,7 +35,7 @@ type ClusterAdminStatus struct {
 // +kubebuilder:resource:shortName=plclusteradmin
 // +kubebuilder:printcolumn:name="Address",type=string,JSONPath=`.spec.address`
 // +kubebuilder:printcolumn:name="Ready",type=string,JSONPath=`.status.conditions[?(@.type=="Ready")].status`
-// +kubebuilder:printcolumn:name="Identity",type=string,JSONPath=`.status.identityId`,priority=1
+// +kubebuilder:printcolumn:name="Identities",type=string,JSONPath=`.status.identityIds`,priority=1
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 type ClusterAdmin struct {
 	metav1.TypeMeta   `json:",inline"`

@@ -1,4 +1,5 @@
 .gen/
 bin/
 tmp/
+.devspace/
 .DS_Store

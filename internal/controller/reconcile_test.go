@@ -2,10 +2,13 @@ package controller
 
 import (
 	"context"
+	"slices"
+	"sort"
 	"testing"
 
 	organizationsv1 "github.com/agynio/platform-controller/.gen/go/agynio/api/organizations/v1"
 	runnersv1 "github.com/agynio/platform-controller/.gen/go/agynio/api/runners/v1"
+	usersv1 "github.com/agynio/platform-controller/.gen/go/agynio/api/users/v1"
 	provisioningv1alpha1 "github.com/agynio/platform-controller/api/v1alpha1"
 	"github.com/agynio/platform-controller/internal/platform"
 	corev1 "k8s.io/api/core/v1"
@@ -267,8 +270,88 @@ func TestClusterAdminGrantsTheNamedAccountOnly(t *testing.T) {
 	if err := k8s.Get(context.Background(), client.ObjectKeyFromObject(admin), &updated); err != nil {
 		t.Fatal(err)
 	}
-	if updated.Status.IdentityID != "identity-1" {
-		t.Fatalf("expected the granted identity on status, got %q", updated.Status.IdentityID)
+	if !slices.Equal(updated.Status.IdentityIDs, []string{"identity-1"}) {
+		t.Fatalf("expected the granted identity on status, got %v", updated.Status.IdentityIDs)
+	}
+}
+
+// Two accounts asserting one address is what a switched identity provider
+// leaves behind, since an account is keyed on the subject its issuer asserts.
+// The declaration names a person rather than a row, so both are granted --
+// picking one lands the role on whichever half the roster listed first, which
+// after a migration is the abandoned account nobody can sign into.
+func TestClusterAdminGrantsEveryAccountForTheAddress(t *testing.T) {
+	scheme := testScheme()
+	admin := &provisioningv1alpha1.ClusterAdmin{
+		ObjectMeta: metav1.ObjectMeta{Name: "operator", Namespace: namespace},
+		Spec:       provisioningv1alpha1.ClusterAdminSpec{Address: "operator@example.com"},
+	}
+	users := &fakeUsers{directory: map[string]string{
+		"identity-1": "operator@example.com",
+		"identity-2": "operator@example.com",
+		"identity-3": "someone@example.com",
+	}}
+	k8s := newFakeClient(scheme, admin)
+	reconciler := &ClusterAdminReconciler{Client: k8s, Platform: &platform.Client{Users: users}}
+
+	if _, err := reconciler.Reconcile(context.Background(), request("operator")); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	granted := []string{}
+	for _, update := range users.updates {
+		granted = append(granted, update.GetIdentityId())
+	}
+	sort.Strings(granted)
+	if !slices.Equal(granted, []string{"identity-1", "identity-2"}) {
+		t.Fatalf("expected both accounts for the address to be granted, got %v", granted)
+	}
+
+	var updated provisioningv1alpha1.ClusterAdmin
+	if err := k8s.Get(context.Background(), client.ObjectKeyFromObject(admin), &updated); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(updated.Status.IdentityIDs, []string{"identity-1", "identity-2"}) {
+		t.Fatalf("expected both identities recorded for revocation, got %v", updated.Status.IdentityIDs)
+	}
+	if updated.Status.Conditions[0].Status != metav1.ConditionTrue {
+		t.Fatalf("expected Ready, got %+v", updated.Status.Conditions[0])
+	}
+}
+
+// Removing the declaration revokes from every account it granted to, not just
+// the last one seen.
+func TestClusterAdminRevokesEveryGrantedAccount(t *testing.T) {
+	scheme := testScheme()
+	now := metav1.Now()
+	admin := &provisioningv1alpha1.ClusterAdmin{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              "operator",
+			Namespace:         namespace,
+			DeletionTimestamp: &now,
+			Finalizers:        []string{revokeFinalizer},
+		},
+		Spec:   provisioningv1alpha1.ClusterAdminSpec{Address: "operator@example.com"},
+		Status: provisioningv1alpha1.ClusterAdminStatus{IdentityIDs: []string{"identity-1", "identity-2"}},
+	}
+	users := &fakeUsers{directory: map[string]string{"identity-1": "operator@example.com"}}
+	reconciler := &ClusterAdminReconciler{
+		Client:   newFakeClient(scheme, admin),
+		Platform: &platform.Client{Users: users},
+	}
+
+	if _, err := reconciler.Reconcile(context.Background(), request("operator")); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	revoked := []string{}
+	for _, update := range users.updates {
+		if update.GetClusterRole() == usersv1.ClusterRole_CLUSTER_ROLE_UNSPECIFIED {
+			revoked = append(revoked, update.GetIdentityId())
+		}
+	}
+	sort.Strings(revoked)
+	// identity-2 has left the roster; the recorded grant is still revoked.
+	if !slices.Equal(revoked, []string{"identity-1", "identity-2"}) {
+		t.Fatalf("expected both grants revoked, got %v", revoked)
 	}
 }
 
@@ -285,7 +368,7 @@ func TestClusterAdminRevokesOnRemoval(t *testing.T) {
 			Finalizers:        []string{revokeFinalizer},
 		},
 		Spec:   provisioningv1alpha1.ClusterAdminSpec{Address: "operator@example.com"},
-		Status: provisioningv1alpha1.ClusterAdminStatus{IdentityID: "identity-1"},
+		Status: provisioningv1alpha1.ClusterAdminStatus{IdentityIDs: []string{"identity-1"}},
 	}
 	users := &fakeUsers{directory: map[string]string{"identity-1": "operator@example.com"}}
 	reconciler := &ClusterAdminReconciler{

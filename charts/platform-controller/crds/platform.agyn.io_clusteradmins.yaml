@@ -23,8 +23,8 @@ spec:
     - jsonPath: .status.conditions[?(@.type=="Ready")].status
       name: Ready
       type: string
-    - jsonPath: .status.identityId
-      name: Identity
+    - jsonPath: .status.identityIds
+      name: Identities
       priority: 1
       type: string
     - jsonPath: .metadata.creationTimestamp
@@ -129,11 +129,19 @@ spec:
                 x-kubernetes-list-map-keys:
                 - type
                 x-kubernetes-list-type: map
-              identityId:
+              identityIds:
                 description: |-
-                  IdentityID is the account the grant was written against, recorded so the
-                  grant can be revoked after the address stops resolving to it.
-                type: string
+                  IdentityIDs are the accounts the grant was written against, recorded so
+                  every one of them can be revoked after the address stops resolving to it.
+
+                  Plural because one address can name several accounts: an account is keyed
+                  on the subject its issuer asserts, so changing issuer leaves the person
+                  holding a new account and the old one behind. The declaration names a
+                  person, not a row, so it grants to all of them rather than guessing which
+                  is current.
+                items:
+                  type: string
+                type: array
               observedGeneration:
                 description: ObservedGeneration is the spec generation this status
                   describes.
