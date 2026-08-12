@@ -1,0 +1,129 @@
+version: v2beta1
+
+vars:
+  PLATFORM_CONTROLLER_NAMESPACE: platform
+  DEV_IMAGE: ghcr.io/agynio/devcontainer-go:1
+
+functions:
+  patch_deployment: |-
+    echo "Patching platform-controller deployment for DevSpace..."
+    kubectl patch deployment platform-controller -n ${PLATFORM_CONTROLLER_NAMESPACE} --type strategic --patch "$(cat <<'EOF'
+    spec:
+      template:
+        spec:
+          securityContext:
+            runAsUser: 1000
+            fsGroup: 1000
+          initContainers: []
+          volumes:
+            - name: data
+              emptyDir: {}
+          containers:
+            - name: platform-controller
+              image: ghcr.io/agynio/devcontainer-go:1 # keep in sync with DEV_IMAGE
+              workingDir: /opt/app/data
+              # All three go, or nothing ever starts: DevSpace waits for the pod
+              # to be ready before it syncs, and the container waits for the sync
+              # before it listens.
+              livenessProbe: null
+              readinessProbe: null
+              startupProbe: null
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  elapsed=0
+                  while [ ! -f /opt/app/data/go.mod ]; do
+                    sleep 1; elapsed=$((elapsed + 1))
+                    [ "$elapsed" -ge 120 ] && { echo "ERROR: sync timeout" >&2; exit 1; }
+                  done
+                  [ -d /opt/app/data/.gen ] || buf generate --template buf.gen.yaml
+                  exec go run ./cmd/platform-controller
+              volumeMounts:
+                - name: data
+                  mountPath: /opt/app/data
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  cpu: "2"
+                  memory: 4Gi
+              securityContext:
+                runAsNonRoot: true
+                runAsUser: 1000
+                runAsGroup: 1000
+                readOnlyRootFilesystem: false
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+                seccompProfile:
+                  type: RuntimeDefault
+    EOF
+    )"
+
+pipelines:
+  dev:
+    flags:
+      - name: watch
+        short: w
+        description: "Keep DevSpace running and stream logs"
+    run: |-
+      patch_deployment
+      if [ "$(get_flag "watch")" == "true" ]; then
+        start_dev --disable-pod-replace platform-controller
+      else
+        start_dev --disable-pod-replace platform-controller
+        echo "Waiting for platform-controller to be healthy on :8081..."
+        healthy=false
+        for i in $(seq 1 90); do
+          if exec_container --label-selector=app.kubernetes.io/name=platform-controller -n ${PLATFORM_CONTROLLER_NAMESPACE} -- bash -c '(echo > /dev/tcp/localhost/8081) >/dev/null 2>&1'; then
+            healthy=true
+            break
+          fi
+          sleep 2
+        done
+        if [ "$healthy" != "true" ]; then
+          echo "ERROR: platform-controller did not become healthy within 180s" >&2
+          exit 1
+        fi
+        echo "Dev environment ready. Stopping dev session."
+        stop_dev platform-controller
+      fi
+
+hooks:
+
+dev:
+  platform-controller:
+    namespace: ${PLATFORM_CONTROLLER_NAMESPACE}
+    # Matched on name alone: the instance label carries the Helm release name,
+    # which is the umbrella release rather than platform-controller.
+    labelSelector:
+      app.kubernetes.io/name: platform-controller
+    containers:
+      platform-controller:
+        container: platform-controller
+        sync:
+          - path: ./:/opt/app/data
+            # /tmp/ is excluded in every direction, and build output belongs
+            # there. The sync is bidirectional, so anything a build writes next
+            # to the source is copied back to the developer's machine -- and a
+            # download cut short by a pod restart leaves a truncated file that
+            # every later sync uploads over the good build.
+            excludePaths:
+              - .git/
+              - .devspace/
+              - /tmp/
+            uploadExcludePaths:
+              - .git/
+              - .devspace/
+              - /tmp/
+            downloadExcludePaths:
+              - .git/
+              - .devspace/
+              - /.gen/
+              - /tmp/
+        logs:
+          enabled: true
+          lastLines: 200
